@@ -27,6 +27,18 @@ def get_api_key(env_var_name: str) -> Optional[str]:
     api_key = os.getenv(env_var_name)
     if not api_key:
         logger.warning(f"API ключ {env_var_name} не найден в переменных окружения")
+        return None
+    
+    # Убираем пробелы и проверяем формат
+    api_key = api_key.strip()
+    if not api_key or api_key == f"your_{env_var_name.lower()}_here":
+        logger.warning(f"API ключ {env_var_name} пустой или содержит placeholder")
+        return None
+    
+    # Проверка формата OpenRouter ключа
+    if env_var_name == "OPENROUTER_API_KEY" and not api_key.startswith("sk-or-v1-"):
+        logger.warning(f"OpenRouter API ключ должен начинаться с 'sk-or-v1-'. Текущий ключ: {api_key[:10]}...")
+    
     return api_key
 
 
@@ -235,8 +247,36 @@ def send_openrouter_request(api_url: str, api_key: str, model_id: str, prompt: s
         logger.error(error_msg)
         return f"Ошибка: {error_msg}"
     except requests.exceptions.HTTPError as e:
-        error_msg = f"HTTP ошибка {e.response.status_code}: {e.response.text[:200] if e.response else str(e)}"
-        logger.error(f"Ошибка при запросе к OpenRouter API: {error_msg}")
+        status_code = e.response.status_code if e.response else "unknown"
+        response_text = ""
+        error_msg = ""
+        
+        if e.response:
+            try:
+                # Пытаемся получить JSON ошибки
+                error_json = e.response.json()
+                if "error" in error_json:
+                    error_msg = error_json["error"].get("message", "Неизвестная ошибка")
+                else:
+                    error_msg = str(error_json)
+            except:
+                # Если не JSON (например, HTML страница ошибки), обрабатываем по статус коду
+                response_text = e.response.text[:200]
+                if status_code == 403:
+                    error_msg = "403 Forbidden: Проверьте API ключ OpenRouter и права доступа. Убедитесь, что ключ правильный и начинается с 'sk-or-v1-'"
+                elif status_code == 401:
+                    error_msg = "401 Unauthorized: Неверный API ключ OpenRouter. Проверьте ключ в файле .env"
+                elif status_code == 429:
+                    error_msg = "429 Too Many Requests: Превышен лимит запросов. Попробуйте позже"
+                elif status_code == 400:
+                    error_msg = "400 Bad Request: Неверный формат запроса или модель недоступна"
+                else:
+                    error_msg = f"HTTP ошибка {status_code}"
+        else:
+            error_msg = f"HTTP ошибка {status_code}"
+        
+        full_error = f"{error_msg}" + (f" (ответ: {response_text[:100]})" if response_text else "")
+        logger.error(f"Ошибка при запросе к OpenRouter API: {full_error}")
         return f"Ошибка: {error_msg}"
     except requests.exceptions.RequestException as e:
         error_msg = f"Ошибка сети при запросе к OpenRouter API: {str(e)}"
