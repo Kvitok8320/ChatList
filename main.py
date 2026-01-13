@@ -7,13 +7,17 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTextEdit, QTableWidget, QTableWidgetItem, QComboBox,
     QLabel, QCheckBox, QMessageBox, QHeaderView, QLineEdit, QDialog,
-    QDialogButtonBox, QFormLayout
+    QDialogButtonBox, QFormLayout, QMenuBar, QFileDialog
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 from typing import List, Dict, Optional
 import db
 import models
+import export
+from models_dialog import ModelsDialog
+from prompts_dialog import PromptsDialog
+from results_dialog import ResultsDialog
 
 
 class WorkerThread(QThread):
@@ -83,6 +87,35 @@ class MainWindow(QMainWindow):
         
         self.init_ui()
         self.load_prompts()
+        self.create_menu()
+    
+    def create_menu(self):
+        """Создает меню приложения"""
+        menubar = self.menuBar()
+        
+        # Меню "Управление"
+        manage_menu = menubar.addMenu("Управление")
+        
+        models_action = manage_menu.addAction("Модели...")
+        models_action.triggered.connect(self.on_manage_models)
+        
+        prompts_action = manage_menu.addAction("Промты...")
+        prompts_action.triggered.connect(self.on_manage_prompts)
+        
+        results_action = manage_menu.addAction("Результаты...")
+        results_action.triggered.connect(self.on_view_results)
+        
+        # Меню "Экспорт"
+        export_menu = menubar.addMenu("Экспорт")
+        
+        export_md_action = export_menu.addAction("Экспорт в Markdown...")
+        export_md_action.triggered.connect(lambda: self.on_export("markdown"))
+        
+        export_json_action = export_menu.addAction("Экспорт в JSON...")
+        export_json_action.triggered.connect(lambda: self.on_export("json"))
+        
+        export_txt_action = export_menu.addAction("Экспорт в TXT...")
+        export_txt_action.triggered.connect(lambda: self.on_export("text"))
     
     def init_ui(self):
         """Инициализация интерфейса"""
@@ -162,11 +195,19 @@ class MainWindow(QMainWindow):
         self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
         results_layout.addWidget(self.results_table)
         
-        # Кнопка "Сохранить выбранные"
+        # Кнопки для результатов
+        results_buttons = QHBoxLayout()
         self.save_results_btn = QPushButton("Сохранить выбранные результаты")
         self.save_results_btn.clicked.connect(self.on_save_results)
         self.save_results_btn.setEnabled(False)
-        results_layout.addWidget(self.save_results_btn)
+        results_buttons.addWidget(self.save_results_btn)
+        
+        self.export_btn = QPushButton("Экспорт результатов")
+        self.export_btn.clicked.connect(self.on_export_current)
+        self.export_btn.setEnabled(False)
+        results_buttons.addWidget(self.export_btn)
+        
+        results_layout.addLayout(results_buttons)
         
         main_layout.addWidget(results_group)
         
@@ -254,7 +295,16 @@ class MainWindow(QMainWindow):
         
         if results:
             self.save_results_btn.setEnabled(True)
-            QMessageBox.information(self, "Готово", f"Получено ответов: {len(results)}")
+            self.export_btn.setEnabled(True)
+            success_count = sum(1 for r in results if "Ошибка" not in r.response)
+            if success_count < len(results):
+                QMessageBox.warning(
+                    self, "Частичный успех", 
+                    f"Получено ответов: {success_count} из {len(results)}. "
+                    "Некоторые модели вернули ошибки."
+                )
+            else:
+                QMessageBox.information(self, "Готово", f"Получено ответов: {len(results)}")
         else:
             QMessageBox.warning(self, "Предупреждение", "Не получено ни одного ответа")
     
@@ -341,6 +391,94 @@ class MainWindow(QMainWindow):
         self.save_results_btn.setEnabled(False)
         
         QMessageBox.information(self, "Успех", f"Сохранено результатов: {saved_count}")
+    
+    def on_manage_models(self):
+        """Открывает диалог управления моделями"""
+        try:
+            dialog = ModelsDialog(self)
+            dialog.exec_()
+            # Обновляем список промтов на случай, если были изменения
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть диалог управления моделями: {e}")
+    
+    def on_manage_prompts(self):
+        """Открывает диалог управления промтами"""
+        try:
+            dialog = PromptsDialog(self)
+            dialog.exec_()
+            self.load_prompts()  # Обновляем список промтов
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть диалог управления промтами: {e}")
+    
+    def on_view_results(self):
+        """Открывает диалог просмотра результатов"""
+        try:
+            dialog = ResultsDialog(self)
+            dialog.exec_()
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть диалог результатов: {e}")
+    
+    def on_export(self, format_type: str):
+        """Экспорт текущих результатов в файл"""
+        if not self.temp_results:
+            QMessageBox.warning(self, "Предупреждение", "Нет результатов для экспорта")
+            return
+        
+        # Фильтруем только выбранные результаты
+        selected_results = [r for r in self.temp_results if r.get("selected", False)]
+        if not selected_results:
+            reply = QMessageBox.question(
+                self, "Подтверждение",
+                "Нет выбранных результатов. Экспортировать все?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                selected_results = self.temp_results
+            else:
+                return
+        
+        # Выбираем расширение файла
+        extensions = {
+            "markdown": "Markdown (*.md)",
+            "json": "JSON (*.json)",
+            "text": "Text (*.txt)"
+        }
+        
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить результаты",
+            "",
+            extensions.get(format_type, "All Files (*)")
+        )
+        
+        if not filename:
+            return
+        
+        try:
+            prompt_text = self.prompt_edit.toPlainText().strip()
+            
+            if format_type == "markdown":
+                content = export.export_to_markdown(selected_results, prompt_text)
+            elif format_type == "json":
+                content = export.export_to_json(selected_results, prompt_text)
+            else:  # text
+                content = export.export_to_text(selected_results, prompt_text)
+            
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(content)
+            
+            QMessageBox.information(self, "Успех", f"Результаты экспортированы в {filename}")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось экспортировать результаты: {e}")
+    
+    def on_export_current(self):
+        """Экспорт текущих результатов (вызывает диалог выбора формата)"""
+        if not self.temp_results:
+            QMessageBox.warning(self, "Предупреждение", "Нет результатов для экспорта")
+            return
+        
+        # Просто экспортируем в Markdown по умолчанию
+        self.on_export("markdown")
 
 
 if __name__ == "__main__":
