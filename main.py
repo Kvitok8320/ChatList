@@ -18,6 +18,7 @@ import export
 from models_dialog import ModelsDialog
 from prompts_dialog import PromptsDialog
 from results_dialog import ResultsDialog
+from markdown_viewer import MarkdownViewerDialog
 
 
 class WorkerThread(QThread):
@@ -186,11 +187,13 @@ class MainWindow(QMainWindow):
         
         # Таблица результатов
         self.results_table = QTableWidget()
-        self.results_table.setColumnCount(3)
-        self.results_table.setHorizontalHeaderLabels(["Выбрать", "Модель", "Ответ"])
+        self.results_table.setColumnCount(4)
+        self.results_table.setHorizontalHeaderLabels(["Выбрать", "Модель", "Ответ", "Действия"])
         self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.results_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.results_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.results_table.setAlternatingRowColors(True)
         self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
         # Включаем перенос текста для многострочного отображения ответов
@@ -356,6 +359,11 @@ class MainWindow(QMainWindow):
             response_item.setData(Qt.UserRole, response_text)  # Сохраняем полный текст
             response_item.setToolTip(response_text)  # Полный текст в подсказке при наведении
             self.results_table.setItem(row, 2, response_item)
+            
+            # Кнопка "Открыть" для просмотра в markdown
+            open_btn = QPushButton("Открыть")
+            open_btn.clicked.connect(lambda checked, r=row: self.on_open_response(r))
+            self.results_table.setCellWidget(row, 3, open_btn)
         
         # Настраиваем ширину колонок
         self.results_table.resizeColumnToContents(0)  # Чекбокс
@@ -514,6 +522,23 @@ class MainWindow(QMainWindow):
         
         # Просто экспортируем в Markdown по умолчанию
         self.on_export("markdown")
+    
+    def on_open_response(self, row: int):
+        """Открывает ответ модели в диалоге с форматированным markdown"""
+        if row < 0 or row >= len(self.temp_results):
+            return
+        
+        result = self.temp_results[row]
+        model_name = result.get("model_name", "Unknown")
+        response_text = result.get("response", "")
+        
+        if not response_text:
+            QMessageBox.information(self, "Информация", "Ответ пуст")
+            return
+        
+        # Открываем диалог с форматированным markdown
+        dialog = MarkdownViewerDialog(model_name, response_text, self)
+        dialog.exec_()
 
 
 if __name__ == "__main__":
