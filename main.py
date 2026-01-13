@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (
     QDialogButtonBox, QFormLayout, QMenuBar, QFileDialog
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QIcon
 from typing import List, Dict, Optional
 import db
 import models
@@ -99,6 +99,12 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("ChatList - Сравнение ответов нейросетей")
         self.setGeometry(100, 100, 1200, 800)
+        
+        # Устанавливаем иконку окна
+        import os
+        icon_path = os.path.join(os.path.dirname(__file__), "app.ico")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
         
         # Инициализация базы данных
         db.init_db()
@@ -866,6 +872,13 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    
+    # Устанавливаем иконку приложения
+    import os
+    icon_path = os.path.join(os.path.dirname(__file__), "app.ico")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+    
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
