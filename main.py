@@ -19,6 +19,8 @@ from models_dialog import ModelsDialog
 from prompts_dialog import PromptsDialog
 from results_dialog import ResultsDialog
 from markdown_viewer import MarkdownViewerDialog
+from prompt_improver import improve_prompt
+from prompt_improver_dialog import PromptImproverDialog
 
 
 class WorkerThread(QThread):
@@ -35,6 +37,25 @@ class WorkerThread(QThread):
         try:
             results = models.send_prompt_to_models(self.prompt)
             self.finished.emit(results)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class ImprovePromptThread(QThread):
+    """Поток для улучшения промта в фоновом режиме"""
+    finished = pyqtSignal(dict)
+    error = pyqtSignal(str)
+    
+    def __init__(self, prompt: str, model_id: Optional[int] = None):
+        super().__init__()
+        self.prompt = prompt
+        self.model_id = model_id
+    
+    def run(self):
+        """Улучшает промт"""
+        try:
+            result = improve_prompt(self.prompt, self.model_id)
+            self.finished.emit(result)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -85,6 +106,8 @@ class MainWindow(QMainWindow):
         
         # Поток для выполнения запросов
         self.worker_thread: Optional[WorkerThread] = None
+        # Поток для улучшения промта
+        self.improve_thread: Optional[ImprovePromptThread] = None
         
         self.init_ui()
         self.load_prompts()
@@ -159,6 +182,15 @@ class MainWindow(QMainWindow):
         prompt_controls.addWidget(self.save_prompt_btn)
         
         prompt_layout.addLayout(prompt_controls)
+        
+        # Кнопка "Улучшить промт"
+        improve_layout = QHBoxLayout()
+        self.improve_prompt_btn = QPushButton("Улучшить промт")
+        self.improve_prompt_btn.clicked.connect(self.on_improve_prompt)
+        self.improve_prompt_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+        improve_layout.addWidget(self.improve_prompt_btn)
+        improve_layout.addStretch()
+        prompt_layout.addLayout(improve_layout)
         
         # Область ввода промта
         self.prompt_edit = QTextEdit()
@@ -564,6 +596,47 @@ class MainWindow(QMainWindow):
         # Просто экспортируем в Markdown по умолчанию
         self.on_export("markdown")
     
+    def on_improve_settings(self):
+        """Настройки AI-ассистента для улучшения промтов"""
+        from PyQt5.QtWidgets import QComboBox, QFormLayout, QDialogButtonBox
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Настройки улучшения промтов")
+        dialog.setModal(True)
+        
+        layout = QFormLayout()
+        
+        # Выбор модели по умолчанию
+        model_combo = QComboBox()
+        active_models = db.get_active_models()
+        model_combo.addItem("-- Автоматически (первая активная) --", None)
+        
+        current_model_id = db.get_setting("improve_prompt_model_id")
+        current_index = 0
+        
+        for idx, model in enumerate(active_models, 1):
+            model_combo.addItem(model["name"], model["id"])
+            if current_model_id and str(model["id"]) == current_model_id:
+                current_index = idx
+        
+        model_combo.setCurrentIndex(current_index)
+        layout.addRow("Модель для улучшения:", model_combo)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+        
+        dialog.setLayout(layout)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            selected_model_id = model_combo.currentData()
+            if selected_model_id:
+                db.save_setting("improve_prompt_model_id", str(selected_model_id))
+            else:
+                db.save_setting("improve_prompt_model_id", "")
+            QMessageBox.information(self, "Успех", "Настройки сохранены")
+    
     def on_open_response(self, row: int):
         """Открывает ответ модели в диалоге с форматированным markdown"""
         if row < 0 or row >= len(self.temp_results):
@@ -580,6 +653,80 @@ class MainWindow(QMainWindow):
         # Открываем диалог с форматированным markdown
         dialog = MarkdownViewerDialog(model_name, response_text, self)
         dialog.exec_()
+    
+    def on_improve_prompt(self):
+        """Обработчик кнопки 'Улучшить промт'"""
+        prompt_text = self.prompt_edit.toPlainText().strip()
+        
+        if not prompt_text:
+            QMessageBox.warning(self, "Предупреждение", "Введите промт для улучшения")
+            return
+        
+        # Проверяем наличие активных моделей
+        active_models = db.get_active_models()
+        if not active_models:
+            QMessageBox.warning(self, "Предупреждение", "Нет активных моделей для улучшения промта")
+            return
+        
+        # Выбираем модель
+        model_id = None
+        
+        # Проверяем настройку модели по умолчанию
+        default_model_id = db.get_setting("improve_prompt_model_id")
+        if default_model_id:
+            try:
+                model_id = int(default_model_id)
+                # Проверяем, что модель активна
+                model = db.get_model_by_id(model_id)
+                if not model or model.get("is_active", 0) != 1:
+                    model_id = None
+            except:
+                model_id = None
+        
+        # Если не нашли модель из настроек или моделей несколько, выбираем первую
+        if not model_id:
+            model_id = active_models[0]["id"]
+        
+        # Блокируем кнопку
+        self.improve_prompt_btn.setEnabled(False)
+        self.improve_prompt_btn.setText("Улучшение...")
+        
+        # Показываем индикатор загрузки
+        self.loading_label.setText("Улучшение промта...")
+        self.loading_label.show()
+        
+        # Создаем и запускаем поток
+        self.improve_thread = ImprovePromptThread(prompt_text, model_id)
+        self.improve_thread.finished.connect(self.on_improvement_finished)
+        self.improve_thread.error.connect(self.on_improvement_error)
+        self.improve_thread.start()
+    
+    def on_improvement_finished(self, result: Dict):
+        """Обработчик завершения улучшения промта"""
+        self.loading_label.hide()
+        self.improve_prompt_btn.setEnabled(True)
+        self.improve_prompt_btn.setText("Улучшить промт")
+        
+        # Проверяем на ошибки
+        if "error" in result:
+            QMessageBox.critical(self, "Ошибка", result["error"])
+            return
+        
+        # Открываем диалог с результатами
+        dialog = PromptImproverDialog(self.prompt_edit.toPlainText().strip(), result, self)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            selected_prompt = dialog.get_selected_prompt()
+            if selected_prompt:
+                self.prompt_edit.setPlainText(selected_prompt)
+                # Не показываем сообщение, чтобы не мешать пользователю
+    
+    def on_improvement_error(self, error_msg: str):
+        """Обработчик ошибки при улучшении промта"""
+        self.loading_label.hide()
+        self.improve_prompt_btn.setEnabled(True)
+        self.improve_prompt_btn.setText("Улучшить промт")
+        QMessageBox.critical(self, "Ошибка", f"Ошибка при улучшении промта: {error_msg}")
 
 
 if __name__ == "__main__":
