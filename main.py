@@ -21,6 +21,8 @@ from results_dialog import ResultsDialog
 from markdown_viewer import MarkdownViewerDialog
 from prompt_improver import improve_prompt
 from prompt_improver_dialog import PromptImproverDialog
+from settings_dialog import SettingsDialog
+from about_dialog import AboutDialog
 
 
 class WorkerThread(QThread):
@@ -112,6 +114,7 @@ class MainWindow(QMainWindow):
         self.init_ui()
         self.load_prompts()
         self.create_menu()
+        self.apply_settings()
     
     def create_menu(self):
         """Создает меню приложения"""
@@ -140,6 +143,21 @@ class MainWindow(QMainWindow):
         
         export_txt_action = export_menu.addAction("Экспорт в TXT...")
         export_txt_action.triggered.connect(lambda: self.on_export("text"))
+        
+        # Меню "Настройки"
+        settings_menu = menubar.addMenu("Настройки")
+        
+        app_settings_action = settings_menu.addAction("Настройки приложения...")
+        app_settings_action.triggered.connect(self.on_app_settings)
+        
+        improve_settings_action = settings_menu.addAction("Настройки улучшения промтов...")
+        improve_settings_action.triggered.connect(self.on_improve_settings)
+        
+        # Меню "Справка"
+        help_menu = menubar.addMenu("Справка")
+        
+        about_action = help_menu.addAction("О программе...")
+        about_action.triggered.connect(self.on_about)
     
     def init_ui(self):
         """Инициализация интерфейса"""
@@ -636,6 +654,123 @@ class MainWindow(QMainWindow):
             else:
                 db.save_setting("improve_prompt_model_id", "")
             QMessageBox.information(self, "Успех", "Настройки сохранены")
+    
+    def on_app_settings(self):
+        """Открывает диалог настроек приложения"""
+        dialog = SettingsDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            # Применяем настройки сразу
+            self.apply_settings()
+    
+    def apply_settings(self):
+        """Применяет настройки темы и размера шрифта"""
+        # Загружаем настройки из БД
+        theme = db.get_setting("theme", "light")
+        font_size_str = db.get_setting("font_size", "10")
+        
+        try:
+            font_size = int(font_size_str)
+        except ValueError:
+            font_size = 10
+        
+        # Применяем тему
+        if theme == "dark":
+            self.setStyleSheet("""
+                QMainWindow {
+                    background-color: #2b2b2b;
+                    color: #ffffff;
+                }
+                QWidget {
+                    background-color: #2b2b2b;
+                    color: #ffffff;
+                }
+                QTextEdit, QLineEdit, QComboBox {
+                    background-color: #3c3c3c;
+                    color: #ffffff;
+                    border: 1px solid #555555;
+                }
+                QPushButton {
+                    background-color: #404040;
+                    color: #ffffff;
+                    border: 1px solid #555555;
+                    padding: 5px;
+                }
+                QPushButton:hover {
+                    background-color: #505050;
+                }
+                QPushButton:pressed {
+                    background-color: #303030;
+                }
+                QTableWidget {
+                    background-color: #2b2b2b;
+                    color: #ffffff;
+                    gridline-color: #555555;
+                }
+                QTableWidget::item {
+                    background-color: #2b2b2b;
+                    color: #ffffff;
+                }
+                QTableWidget::item:selected {
+                    background-color: #404040;
+                }
+                QHeaderView::section {
+                    background-color: #3c3c3c;
+                    color: #ffffff;
+                    padding: 5px;
+                    border: 1px solid #555555;
+                }
+                QGroupBox {
+                    border: 1px solid #555555;
+                    border-radius: 5px;
+                    margin-top: 10px;
+                    padding-top: 10px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px;
+                }
+                QLabel {
+                    color: #ffffff;
+                }
+                QCheckBox {
+                    color: #ffffff;
+                }
+                QMenuBar {
+                    background-color: #2b2b2b;
+                    color: #ffffff;
+                }
+                QMenuBar::item:selected {
+                    background-color: #404040;
+                }
+                QMenu {
+                    background-color: #2b2b2b;
+                    color: #ffffff;
+                }
+                QMenu::item:selected {
+                    background-color: #404040;
+                }
+            """)
+        else:  # light theme
+            self.setStyleSheet("")
+        
+        # Применяем размер шрифта
+        base_font = QFont("Arial", font_size)
+        self.setFont(base_font)
+        
+        # Применяем размер шрифта к основным элементам
+        if hasattr(self, 'prompt_edit'):
+            prompt_font = QFont("Arial", font_size)
+            self.prompt_edit.setFont(prompt_font)
+        
+        if hasattr(self, 'results_table'):
+            table_font = QFont("Arial", font_size)
+            self.results_table.setFont(table_font)
+    
+    def on_about(self):
+        """Открывает диалог 'О программе'"""
+        dialog = AboutDialog(self)
+        dialog.exec_()
     
     def on_open_response(self, row: int):
         """Открывает ответ модели в диалоге с форматированным markdown"""
