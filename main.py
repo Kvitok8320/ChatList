@@ -193,6 +193,10 @@ class MainWindow(QMainWindow):
         self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.results_table.setAlternatingRowColors(True)
         self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
+        # Включаем перенос текста для многострочного отображения ответов
+        self.results_table.setWordWrap(True)
+        # Устанавливаем минимальную высоту строк для лучшей читаемости
+        self.results_table.verticalHeader().setDefaultSectionSize(150)
         results_layout.addWidget(self.results_table)
         
         # Кнопки для результатов
@@ -347,10 +351,28 @@ class MainWindow(QMainWindow):
             response_item = QTableWidgetItem(result.get("response", ""))
             response_item.setFlags(response_item.flags() & ~Qt.ItemIsEditable)
             response_item.setTextAlignment(Qt.AlignTop | Qt.AlignLeft)
+            # Включаем перенос текста для многострочного отображения
+            response_text = result.get("response", "")
+            response_item.setData(Qt.UserRole, response_text)  # Сохраняем полный текст
+            response_item.setToolTip(response_text)  # Полный текст в подсказке при наведении
             self.results_table.setItem(row, 2, response_item)
         
-        # Автоматически подстраиваем высоту строк
+        # Настраиваем ширину колонок
+        self.results_table.resizeColumnToContents(0)  # Чекбокс
+        self.results_table.resizeColumnToContents(1)  # Название модели
+        # Колонка с ответом уже настроена на Stretch
+        
+        # Автоматически подстраиваем высоту строк с учетом многострочного текста
         self.results_table.resizeRowsToContents()
+        
+        # Устанавливаем минимальную высоту строк для лучшей читаемости длинных ответов
+        for row in range(self.results_table.rowCount()):
+            current_height = self.results_table.rowHeight(row)
+            # Минимальная высота 150px для комфортного чтения, но если текст длиннее - увеличиваем
+            min_height = max(150, current_height)
+            # Максимальная высота 500px, чтобы не было слишком длинных строк
+            max_height = min(500, min_height)
+            self.results_table.setRowHeight(row, max_height)
     
     def on_checkbox_changed(self, row: int, state: int):
         """Обработчик изменения состояния чекбокса"""
