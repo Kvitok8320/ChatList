@@ -217,3 +217,5 @@ class PromptsDialog(QDialog):
                 QMessageBox.critical(self, "Ошибка", f"Ошибка при удалении: {e}")
 
 
+
+

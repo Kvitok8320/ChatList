@@ -266,3 +266,5 @@ class ModelsDialog(QDialog):
             QMessageBox.critical(self, "Ошибка", f"Ошибка: {e}")
 
 
+
+

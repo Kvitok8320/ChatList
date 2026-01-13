@@ -52,6 +52,26 @@ def get_timeout() -> int:
         return 30
 
 
+def get_proxies():
+    """
+    Получает настройки прокси из переменных окружения
+    Если переменные не установлены, отключает прокси
+    """
+    http_proxy = os.getenv("HTTP_PROXY") or os.getenv("http_proxy")
+    https_proxy = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+    
+    if http_proxy or https_proxy:
+        proxies = {}
+        if http_proxy:
+            proxies["http"] = http_proxy
+        if https_proxy:
+            proxies["https"] = https_proxy
+        return proxies
+    else:
+        # Отключаем прокси, если не указаны явно
+        return {"http": None, "https": None}
+
+
 def send_openai_request(api_url: str, api_key: str, model_id: str, prompt: str) -> Optional[str]:
     """
     Отправляет запрос к OpenAI API
@@ -84,7 +104,8 @@ def send_openai_request(api_url: str, api_key: str, model_id: str, prompt: str) 
             api_url,
             headers=headers,
             json=data,
-            timeout=get_timeout()
+            timeout=get_timeout(),
+            proxies=get_proxies()
         )
         response.raise_for_status()
         
@@ -147,7 +168,8 @@ def send_deepseek_request(api_url: str, api_key: str, model_id: str, prompt: str
             api_url,
             headers=headers,
             json=data,
-            timeout=get_timeout()
+            timeout=get_timeout(),
+            proxies=get_proxies()
         )
         response.raise_for_status()
         
@@ -212,7 +234,8 @@ def send_openrouter_request(api_url: str, api_key: str, model_id: str, prompt: s
             api_url,
             headers=headers,
             json=data,
-            timeout=get_timeout()
+            timeout=get_timeout(),
+            proxies=get_proxies()
         )
         response.raise_for_status()
         
@@ -320,7 +343,8 @@ def send_groq_request(api_url: str, api_key: str, model_id: str, prompt: str) ->
             api_url,
             headers=headers,
             json=data,
-            timeout=get_timeout()
+            timeout=get_timeout(),
+            proxies=get_proxies()
         )
         response.raise_for_status()
         

@@ -14,3 +14,5 @@ for m in models:
     print(f"  Активна: {'Да' if m['is_active'] == 1 else 'Нет'}")
     print()
 
+
+

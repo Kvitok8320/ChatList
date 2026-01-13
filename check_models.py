@@ -35,3 +35,5 @@ for var in env_vars:
         print(f"  ✗ {var}: не установлен")
 
 
+
+

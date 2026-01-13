@@ -136,3 +136,5 @@ class ResultsDialog(QDialog):
                 QMessageBox.critical(self, "Ошибка", f"Ошибка при удалении: {e}")
 
 
+
+
