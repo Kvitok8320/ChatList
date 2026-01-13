@@ -341,8 +341,14 @@ class MainWindow(QMainWindow):
         for row, result in enumerate(self.temp_results):
             # Чекбокс
             checkbox = QCheckBox()
-            checkbox.setChecked(result.get("selected", False))
-            checkbox.stateChanged.connect(lambda state, r=row: self.on_checkbox_changed(r, state))
+            is_selected = result.get("selected", False)
+            checkbox.setChecked(is_selected)
+            # Используем замыкание для правильного захвата переменных
+            def make_checkbox_handler(r, res):
+                def handler(state):
+                    res["selected"] = (state == Qt.Checked)
+                return handler
+            checkbox.stateChanged.connect(make_checkbox_handler(row, result))
             self.results_table.setCellWidget(row, 0, checkbox)
             
             # Название модели
@@ -382,13 +388,25 @@ class MainWindow(QMainWindow):
             max_height = min(500, min_height)
             self.results_table.setRowHeight(row, max_height)
     
-    def on_checkbox_changed(self, row: int, state: int):
+    def on_checkbox_changed(self, row: int, state: int, result: Dict = None):
         """Обработчик изменения состояния чекбокса"""
-        if row < len(self.temp_results):
-            self.temp_results[row]["selected"] = (state == Qt.Checked)
+        is_checked = (state == Qt.Checked)
+        if result:
+            # Обновляем напрямую переданный результат
+            result["selected"] = is_checked
+        elif row < len(self.temp_results):
+            # Обновляем по индексу
+            self.temp_results[row]["selected"] = is_checked
     
     def on_save_results(self):
         """Обработчик кнопки 'Сохранить выбранные результаты'"""
+        # Сначала обновляем состояние чекбоксов из таблицы
+        for row in range(self.results_table.rowCount()):
+            if row < len(self.temp_results):
+                checkbox = self.results_table.cellWidget(row, 0)
+                if checkbox:
+                    self.temp_results[row]["selected"] = checkbox.isChecked()
+        
         selected_results = [r for r in self.temp_results if r.get("selected", False)]
         
         if not selected_results:
@@ -406,12 +424,23 @@ class MainWindow(QMainWindow):
             if existing_prompts:
                 prompt_id = existing_prompts[0]["id"]
             else:
-                prompt_id = db.add_prompt(prompt_text)
+                try:
+                    prompt_id = db.add_prompt(prompt_text)
+                except Exception as e:
+                    QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить промт: {e}")
+                    return
         
         # Сохраняем каждый выбранный результат
         saved_count = 0
+        errors = []
         for result in selected_results:
             model_name = result.get("model_name", "")
+            response_text = result.get("response", "")
+            
+            if not response_text:
+                errors.append(f"Пустой ответ от модели {model_name}")
+                continue
+            
             # Находим ID модели по имени
             all_models = db.get_models()
             model_id = None
@@ -420,20 +449,32 @@ class MainWindow(QMainWindow):
                     model_id = model["id"]
                     break
             
-            db.save_result(
-                prompt_id=prompt_id,
-                model_id=model_id,
-                response=result.get("response", ""),
-                prompt_text=prompt_text
-            )
-            saved_count += 1
+            if not model_id:
+                errors.append(f"Модель '{model_name}' не найдена в базе данных")
+                continue
+            
+            try:
+                db.save_result(
+                    prompt_id=prompt_id,
+                    model_id=model_id,
+                    response=response_text,
+                    prompt_text=prompt_text
+                )
+                saved_count += 1
+            except Exception as e:
+                errors.append(f"Ошибка при сохранении результата от {model_name}: {e}")
         
         # Очищаем временную таблицу
         self.temp_results = []
         self.results_table.setRowCount(0)
         self.save_results_btn.setEnabled(False)
         
-        QMessageBox.information(self, "Успех", f"Сохранено результатов: {saved_count}")
+        # Показываем результат
+        if errors:
+            error_msg = f"Сохранено: {saved_count}\n\nОшибки:\n" + "\n".join(errors)
+            QMessageBox.warning(self, "Частичный успех", error_msg)
+        else:
+            QMessageBox.information(self, "Успех", f"Сохранено результатов: {saved_count}")
     
     def on_manage_models(self):
         """Открывает диалог управления моделями"""
