@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 import db
+from markdown_viewer import MarkdownViewerDialog
 
 
 class ResultsDialog(QDialog):
@@ -44,15 +45,18 @@ class ResultsDialog(QDialog):
         
         # Таблица результатов
         self.results_table = QTableWidget()
-        self.results_table.setColumnCount(5)
+        self.results_table.setColumnCount(6)
         self.results_table.setHorizontalHeaderLabels([
-            "ID", "Дата", "Модель", "Промт", "Ответ"
+            "ID", "Дата", "Модель", "Промт", "Ответ", "Действия"
         ])
         self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.results_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.results_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        # Включаем перенос текста
+        self.results_table.setWordWrap(True)
         self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.results_table.setAlternatingRowColors(True)
         layout.addWidget(self.results_table)
@@ -88,7 +92,14 @@ class ResultsDialog(QDialog):
             self.results_table.setItem(row, 3, QTableWidgetItem(prompt_text))
             
             response = result.get("response", "")[:200] + "..." if len(result.get("response", "")) > 200 else result.get("response", "")
-            self.results_table.setItem(row, 4, QTableWidgetItem(response))
+            response_item = QTableWidgetItem(response)
+            response_item.setToolTip(result.get("response", ""))  # Полный текст в подсказке
+            self.results_table.setItem(row, 4, response_item)
+            
+            # Кнопка "Открыть" для просмотра полного ответа в markdown
+            open_btn = QPushButton("Открыть")
+            open_btn.clicked.connect(lambda checked, r=row: self.on_open_response(r))
+            self.results_table.setCellWidget(row, 5, open_btn)
             
             # Делаем все ячейки нередактируемыми
             for col in range(5):
@@ -98,6 +109,9 @@ class ResultsDialog(QDialog):
         
         # Автоматически подстраиваем высоту строк
         self.results_table.resizeRowsToContents()
+        # Устанавливаем минимальную высоту строк
+        for row in range(self.results_table.rowCount()):
+            self.results_table.setRowHeight(row, max(80, self.results_table.rowHeight(row)))
     
     def on_search(self):
         """Обработчик поиска"""
@@ -134,6 +148,41 @@ class ResultsDialog(QDialog):
                     QMessageBox.warning(self, "Предупреждение", "Не удалось удалить результат")
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", f"Ошибка при удалении: {e}")
+    
+    def on_open_response(self, row: int):
+        """Открывает полный ответ в диалоге с форматированным markdown"""
+        if row < 0 or row >= self.results_table.rowCount():
+            return
+        
+        # Получаем ID результата из первой колонки
+        id_item = self.results_table.item(row, 0)
+        model_item = self.results_table.item(row, 2)
+        
+        if not id_item or not model_item:
+            return
+        
+        result_id = int(id_item.text())
+        model_name = model_item.text()
+        
+        # Получаем полный ответ из базы данных
+        try:
+            result_data = db.get_result_by_id(result_id)
+            if not result_data:
+                QMessageBox.warning(self, "Предупреждение", "Результат не найден в базе данных")
+                return
+            
+            full_response = result_data.get("response", "")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Ошибка при загрузке ответа: {e}")
+            return
+        
+        if not full_response:
+            QMessageBox.information(self, "Информация", "Ответ пуст")
+            return
+        
+        # Открываем диалог с форматированным markdown
+        dialog = MarkdownViewerDialog(model_name, full_response, self)
+        dialog.exec_()
 
 
 

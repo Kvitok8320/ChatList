@@ -357,6 +357,24 @@ def get_results(sort_by: str = "date", order: str = "DESC",
     return [dict(row) for row in rows]
 
 
+def get_result_by_id(result_id: int) -> Optional[Dict]:
+    """Получает результат по ID"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT r.id, r.prompt_id, r.model_id, r.response, r.date, r.prompt_text,
+               m.name as model_name, p.prompt as prompt_text_full
+        FROM results r
+        LEFT JOIN models m ON r.model_id = m.id
+        LEFT JOIN prompts p ON r.prompt_id = p.id
+        WHERE r.id = ?
+    """, (result_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    return dict(row) if row else None
+
+
 def search_results(query: str) -> List[Dict]:
     """Поиск результатов по тексту"""
     conn = get_connection()
