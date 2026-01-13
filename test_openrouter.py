@@ -1,7 +1,13 @@
 """Тестовый скрипт для проверки OpenRouter API"""
 import os
+import sys
 import requests
 from dotenv import load_dotenv
+
+print("=" * 60)
+print("Проверка OpenRouter API ключа")
+print("=" * 60)
+print()
 
 load_dotenv()
 
@@ -9,10 +15,23 @@ api_key = os.getenv("OPENROUTER_API_KEY")
 
 if not api_key:
     print("❌ OPENROUTER_API_KEY не найден в .env файле")
-    exit(1)
+    print("   Убедитесь, что файл .env существует и содержит OPENROUTER_API_KEY")
+    sys.exit(1)
 
-print(f"✓ API ключ найден: {api_key[:10]}...{api_key[-4:]}")
+api_key = api_key.strip()
+
+print(f"✓ API ключ найден")
+print(f"  Начало ключа: {api_key[:15]}...")
+print(f"  Конец ключа: ...{api_key[-10:]}")
 print(f"  Длина ключа: {len(api_key)} символов")
+
+# Проверка формата
+if not api_key.startswith("sk-or-v1-"):
+    print(f"⚠ ПРЕДУПРЕЖДЕНИЕ: Ключ не начинается с 'sk-or-v1-'")
+    print(f"   Это может быть неверный формат ключа OpenRouter")
+else:
+    print(f"✓ Формат ключа правильный (начинается с 'sk-or-v1-')")
+
 print()
 
 # Тестируем простой запрос
