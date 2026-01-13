@@ -239,6 +239,17 @@ def send_openrouter_request(api_url: str, api_key: str, model_id: str, prompt: s
         )
         response.raise_for_status()
         
+        # Проверяем Content-Type ответа
+        content_type = response.headers.get("Content-Type", "").lower()
+        if "text/html" in content_type:
+            error_msg = f"Модель {model_id}: Сервер вернул HTML вместо JSON. " \
+                       f"Возможно, прокси блокирует эту модель или модель недоступна. " \
+                       f"Попробуйте другую модель или проверьте настройки прокси."
+            logger.error(f"OpenRouter API вернул HTML для модели {model_id}")
+            logger.error(f"Content-Type: {content_type}")
+            logger.error(f"HTML ответ (первые 300 символов): {response.text[:300]}")
+            return f"Ошибка: {error_msg}"
+        
         # Проверяем, что ответ не пустой
         if not response.text:
             error_msg = "Пустой ответ от OpenRouter API"
@@ -248,8 +259,18 @@ def send_openrouter_request(api_url: str, api_key: str, model_id: str, prompt: s
         try:
             result = response.json()
         except ValueError as e:
-            error_msg = f"Ошибка парсинга JSON от OpenRouter API: {str(e)}. Ответ: {response.text[:200]}"
-            logger.error(error_msg)
+            # Если получили HTML вместо JSON, это может быть страница ошибки от прокси или сервера
+            response_text = response.text[:500]
+            if "<!DOCTYPE html>" in response_text or "<html" in response_text.lower():
+                error_msg = f"Модель {model_id}: Сервер вернул HTML вместо JSON. " \
+                           f"Возможные причины: прокси блокирует запрос, модель недоступна, " \
+                           f"или требуется специальный доступ. Попробуйте другую модель."
+                logger.error(f"OpenRouter API вернул HTML вместо JSON для модели {model_id}")
+                logger.error(f"HTML ответ (первые 200 символов): {response_text[:200]}")
+            else:
+                error_msg = f"Ошибка парсинга JSON от OpenRouter API для модели {model_id}: {str(e)}. " \
+                           f"Ответ: {response_text[:200]}"
+                logger.error(error_msg)
             return f"Ошибка: {error_msg}"
         
         if "choices" in result and len(result["choices"]) > 0:
