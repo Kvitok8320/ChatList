@@ -1,30 +1,346 @@
+"""
+Главный модуль приложения ChatList
+Графический интерфейс для сравнения ответов нейросетей
+"""
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QTextEdit, QTableWidget, QTableWidgetItem, QComboBox,
+    QLabel, QCheckBox, QMessageBox, QHeaderView, QLineEdit, QDialog,
+    QDialogButtonBox, QFormLayout
+)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QFont
+from typing import List, Dict, Optional
+import db
+import models
+
+
+class WorkerThread(QThread):
+    """Поток для выполнения запросов к API в фоновом режиме"""
+    finished = pyqtSignal(list)
+    error = pyqtSignal(str)
+    
+    def __init__(self, prompt: str):
+        super().__init__()
+        self.prompt = prompt
+    
+    def run(self):
+        """Выполняет запросы к моделям"""
+        try:
+            results = models.send_prompt_to_models(self.prompt)
+            self.finished.emit(results)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class SavePromptDialog(QDialog):
+    """Диалог для сохранения промта"""
+    def __init__(self, prompt_text: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Сохранить промт")
+        self.setModal(True)
+        
+        layout = QFormLayout()
+        
+        self.prompt_edit = QTextEdit()
+        self.prompt_edit.setPlainText(prompt_text)
+        self.prompt_edit.setMaximumHeight(100)
+        layout.addRow("Промт:", self.prompt_edit)
+        
+        self.tags_edit = QLineEdit()
+        self.tags_edit.setPlaceholderText("тег1, тег2, тег3")
+        layout.addRow("Теги:", self.tags_edit)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+        
+        self.setLayout(layout)
+    
+    def get_prompt(self) -> str:
+        return self.prompt_edit.toPlainText()
+    
+    def get_tags(self) -> str:
+        return self.tags_edit.text()
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Минимальная программа PyQt")
-        self.setGeometry(100, 100, 400, 200)
+        self.setWindowTitle("ChatList - Сравнение ответов нейросетей")
+        self.setGeometry(100, 100, 1200, 800)
         
-        # Создаем центральный виджет и layout
+        # Инициализация базы данных
+        db.init_db()
+        
+        # Временная таблица результатов в памяти
+        self.temp_results: List[Dict] = []
+        
+        # Поток для выполнения запросов
+        self.worker_thread: Optional[WorkerThread] = None
+        
+        self.init_ui()
+        self.load_prompts()
+    
+    def init_ui(self):
+        """Инициализация интерфейса"""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        layout = QVBoxLayout()
-        central_widget.setLayout(layout)
+        main_layout = QVBoxLayout()
+        central_widget.setLayout(main_layout)
         
-        # Создаем метку
-        self.label = QLabel("Нажмите кнопку!")
-        layout.addWidget(self.label)
+        # === Область работы с промтами ===
+        prompt_group = QWidget()
+        prompt_layout = QVBoxLayout()
+        prompt_group.setLayout(prompt_layout)
         
-        # Создаем кнопку
-        self.button = QPushButton("Нажми меня")
-        self.button.clicked.connect(self.on_button_clicked)
-        layout.addWidget(self.button)
+        # Заголовок
+        prompt_label = QLabel("Промт:")
+        prompt_label.setFont(QFont("Arial", 10, QFont.Bold))
+        prompt_layout.addWidget(prompt_label)
+        
+        # Горизонтальный layout для выбора промта и кнопок
+        prompt_controls = QHBoxLayout()
+        
+        # Выпадающий список сохраненных промтов
+        self.prompt_combo = QComboBox()
+        self.prompt_combo.setEditable(False)
+        self.prompt_combo.currentIndexChanged.connect(self.on_prompt_selected)
+        self.prompt_combo.setMinimumWidth(300)
+        prompt_controls.addWidget(QLabel("Выбрать промт:"))
+        prompt_controls.addWidget(self.prompt_combo)
+        
+        # Кнопка "Выбрать промт"
+        self.select_prompt_btn = QPushButton("Выбрать")
+        self.select_prompt_btn.clicked.connect(self.on_select_prompt)
+        prompt_controls.addWidget(self.select_prompt_btn)
+        
+        prompt_controls.addStretch()
+        
+        # Кнопка "Сохранить промт"
+        self.save_prompt_btn = QPushButton("Сохранить промт")
+        self.save_prompt_btn.clicked.connect(self.on_save_prompt)
+        prompt_controls.addWidget(self.save_prompt_btn)
+        
+        prompt_layout.addLayout(prompt_controls)
+        
+        # Область ввода промта
+        self.prompt_edit = QTextEdit()
+        self.prompt_edit.setPlaceholderText("Введите ваш промт здесь или выберите из сохраненных...")
+        self.prompt_edit.setMinimumHeight(100)
+        prompt_layout.addWidget(self.prompt_edit)
+        
+        # Кнопка "Отправить запрос"
+        self.send_btn = QPushButton("Отправить запрос")
+        self.send_btn.setFont(QFont("Arial", 10, QFont.Bold))
+        self.send_btn.clicked.connect(self.on_send_request)
+        self.send_btn.setMinimumHeight(40)
+        prompt_layout.addWidget(self.send_btn)
+        
+        main_layout.addWidget(prompt_group)
+        
+        # === Область результатов ===
+        results_group = QWidget()
+        results_layout = QVBoxLayout()
+        results_group.setLayout(results_layout)
+        
+        # Заголовок
+        results_label = QLabel("Результаты:")
+        results_label.setFont(QFont("Arial", 10, QFont.Bold))
+        results_layout.addWidget(results_label)
+        
+        # Таблица результатов
+        self.results_table = QTableWidget()
+        self.results_table.setColumnCount(3)
+        self.results_table.setHorizontalHeaderLabels(["Выбрать", "Модель", "Ответ"])
+        self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.results_table.setAlternatingRowColors(True)
+        self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
+        results_layout.addWidget(self.results_table)
+        
+        # Кнопка "Сохранить выбранные"
+        self.save_results_btn = QPushButton("Сохранить выбранные результаты")
+        self.save_results_btn.clicked.connect(self.on_save_results)
+        self.save_results_btn.setEnabled(False)
+        results_layout.addWidget(self.save_results_btn)
+        
+        main_layout.addWidget(results_group)
+        
+        # Индикатор загрузки (скрыт по умолчанию)
+        self.loading_label = QLabel("Отправка запросов...")
+        self.loading_label.setAlignment(Qt.AlignCenter)
+        self.loading_label.setStyleSheet("color: blue; font-weight: bold;")
+        self.loading_label.hide()
+        main_layout.addWidget(self.loading_label)
     
-    def on_button_clicked(self):
-        self.label.setText("Кнопка была нажата!")
+    def load_prompts(self):
+        """Загружает список сохраненных промтов в выпадающий список"""
+        self.prompt_combo.clear()
+        self.prompt_combo.addItem("-- Новый промт --", None)
+        
+        prompts = db.get_prompts()
+        for prompt in prompts:
+            prompt_text = prompt["prompt"][:50] + "..." if len(prompt["prompt"]) > 50 else prompt["prompt"]
+            display_text = f"{prompt_text} ({prompt['date'][:10]})"
+            self.prompt_combo.addItem(display_text, prompt["id"])
+    
+    def on_prompt_selected(self, index: int):
+        """Обработчик выбора промта из списка"""
+        if index > 0:  # Не первый элемент (-- Новый промт --)
+            prompt_id = self.prompt_combo.itemData(index)
+            if prompt_id:
+                prompt_data = db.get_prompt_by_id(prompt_id)
+                if prompt_data:
+                    self.prompt_edit.setPlainText(prompt_data["prompt"])
+    
+    def on_select_prompt(self):
+        """Обработчик кнопки 'Выбрать промт'"""
+        index = self.prompt_combo.currentIndex()
+        if index > 0:
+            self.on_prompt_selected(index)
+        else:
+            QMessageBox.information(self, "Информация", "Выберите промт из списка")
+    
+    def on_save_prompt(self):
+        """Обработчик кнопки 'Сохранить промт'"""
+        prompt_text = self.prompt_edit.toPlainText().strip()
+        if not prompt_text:
+            QMessageBox.warning(self, "Предупреждение", "Введите текст промта")
+            return
+        
+        dialog = SavePromptDialog(prompt_text, self)
+        if dialog.exec_() == QDialog.Accepted:
+            tags = dialog.get_tags().strip()
+            db.add_prompt(prompt_text, tags if tags else None)
+            self.load_prompts()
+            QMessageBox.information(self, "Успех", "Промт сохранен")
+    
+    def on_send_request(self):
+        """Обработчик кнопки 'Отправить запрос'"""
+        prompt_text = self.prompt_edit.toPlainText().strip()
+        if not prompt_text:
+            QMessageBox.warning(self, "Предупреждение", "Введите текст промта")
+            return
+        
+        # Очищаем временную таблицу результатов
+        self.temp_results = []
+        self.results_table.setRowCount(0)
+        self.save_results_btn.setEnabled(False)
+        
+        # Блокируем кнопку отправки
+        self.send_btn.setEnabled(False)
+        self.loading_label.show()
+        
+        # Создаем и запускаем поток для выполнения запросов
+        self.worker_thread = WorkerThread(prompt_text)
+        self.worker_thread.finished.connect(self.on_requests_finished)
+        self.worker_thread.error.connect(self.on_requests_error)
+        self.worker_thread.start()
+    
+    def on_requests_finished(self, results: List[models.ModelResult]):
+        """Обработчик завершения запросов"""
+        self.loading_label.hide()
+        self.send_btn.setEnabled(True)
+        
+        # Сохраняем результаты во временную таблицу
+        self.temp_results = [result.to_dict() for result in results]
+        
+        # Обновляем таблицу
+        self.update_results_table()
+        
+        if results:
+            self.save_results_btn.setEnabled(True)
+            QMessageBox.information(self, "Готово", f"Получено ответов: {len(results)}")
+        else:
+            QMessageBox.warning(self, "Предупреждение", "Не получено ни одного ответа")
+    
+    def on_requests_error(self, error_msg: str):
+        """Обработчик ошибки при выполнении запросов"""
+        self.loading_label.hide()
+        self.send_btn.setEnabled(True)
+        QMessageBox.critical(self, "Ошибка", f"Ошибка при отправке запросов: {error_msg}")
+    
+    def update_results_table(self):
+        """Обновляет таблицу результатов"""
+        self.results_table.setRowCount(len(self.temp_results))
+        
+        for row, result in enumerate(self.temp_results):
+            # Чекбокс
+            checkbox = QCheckBox()
+            checkbox.setChecked(result.get("selected", False))
+            checkbox.stateChanged.connect(lambda state, r=row: self.on_checkbox_changed(r, state))
+            self.results_table.setCellWidget(row, 0, checkbox)
+            
+            # Название модели
+            model_item = QTableWidgetItem(result.get("model_name", "Unknown"))
+            model_item.setFlags(model_item.flags() & ~Qt.ItemIsEditable)
+            self.results_table.setItem(row, 1, model_item)
+            
+            # Ответ
+            response_item = QTableWidgetItem(result.get("response", ""))
+            response_item.setFlags(response_item.flags() & ~Qt.ItemIsEditable)
+            response_item.setTextAlignment(Qt.AlignTop | Qt.AlignLeft)
+            self.results_table.setItem(row, 2, response_item)
+        
+        # Автоматически подстраиваем высоту строк
+        self.results_table.resizeRowsToContents()
+    
+    def on_checkbox_changed(self, row: int, state: int):
+        """Обработчик изменения состояния чекбокса"""
+        if row < len(self.temp_results):
+            self.temp_results[row]["selected"] = (state == Qt.Checked)
+    
+    def on_save_results(self):
+        """Обработчик кнопки 'Сохранить выбранные результаты'"""
+        selected_results = [r for r in self.temp_results if r.get("selected", False)]
+        
+        if not selected_results:
+            QMessageBox.warning(self, "Предупреждение", "Выберите хотя бы один результат для сохранения")
+            return
+        
+        # Получаем текст промта
+        prompt_text = self.prompt_edit.toPlainText().strip()
+        
+        # Сохраняем промт, если его еще нет в БД
+        prompt_id = None
+        if prompt_text:
+            # Проверяем, есть ли уже такой промт
+            existing_prompts = db.search_prompts(prompt_text, "prompt")
+            if existing_prompts:
+                prompt_id = existing_prompts[0]["id"]
+            else:
+                prompt_id = db.add_prompt(prompt_text)
+        
+        # Сохраняем каждый выбранный результат
+        saved_count = 0
+        for result in selected_results:
+            model_name = result.get("model_name", "")
+            # Находим ID модели по имени
+            all_models = db.get_models()
+            model_id = None
+            for model in all_models:
+                if model["name"] == model_name:
+                    model_id = model["id"]
+                    break
+            
+            db.save_result(
+                prompt_id=prompt_id,
+                model_id=model_id,
+                response=result.get("response", ""),
+                prompt_text=prompt_text
+            )
+            saved_count += 1
+        
+        # Очищаем временную таблицу
+        self.temp_results = []
+        self.results_table.setRowCount(0)
+        self.save_results_btn.setEnabled(False)
+        
+        QMessageBox.information(self, "Успех", f"Сохранено результатов: {saved_count}")
 
 
 if __name__ == "__main__":
@@ -32,4 +348,3 @@ if __name__ == "__main__":
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
-
