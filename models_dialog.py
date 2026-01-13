@@ -265,3 +265,4 @@ class ModelsDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка: {e}")
 
+

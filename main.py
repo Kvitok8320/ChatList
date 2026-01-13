@@ -267,6 +267,19 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Предупреждение", "Введите текст промта")
             return
         
+        # Проверяем наличие активных моделей
+        active_models = db.get_active_models()
+        if not active_models:
+            reply = QMessageBox.question(
+                self, "Нет активных моделей",
+                "В базе данных нет активных моделей.\n\n"
+                "Хотите открыть окно управления моделями?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                self.on_manage_models()
+            return
+        
         # Очищаем временную таблицу результатов
         self.temp_results = []
         self.results_table.setRowCount(0)

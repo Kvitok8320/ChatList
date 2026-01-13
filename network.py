@@ -204,14 +204,31 @@ def send_openrouter_request(api_url: str, api_key: str, model_id: str, prompt: s
         )
         response.raise_for_status()
         
-        result = response.json()
+        # Проверяем, что ответ не пустой
+        if not response.text:
+            error_msg = "Пустой ответ от OpenRouter API"
+            logger.error(error_msg)
+            return f"Ошибка: {error_msg}"
+        
+        try:
+            result = response.json()
+        except ValueError as e:
+            error_msg = f"Ошибка парсинга JSON от OpenRouter API: {str(e)}. Ответ: {response.text[:200]}"
+            logger.error(error_msg)
+            return f"Ошибка: {error_msg}"
+        
         if "choices" in result and len(result["choices"]) > 0:
             message = result["choices"][0]["message"]["content"]
             logger.info(f"Получен ответ от OpenRouter API: {len(message)} символов")
             return message
+        elif "error" in result:
+            error_msg = f"Ошибка от OpenRouter API: {result.get('error', {}).get('message', 'Неизвестная ошибка')}"
+            logger.error(error_msg)
+            return f"Ошибка: {error_msg}"
         else:
-            logger.error("Неожиданный формат ответа от OpenRouter API")
-            return None
+            error_msg = "Неожиданный формат ответа от OpenRouter API"
+            logger.error(f"{error_msg}. Ответ: {response.text[:200]}")
+            return f"Ошибка: {error_msg}"
             
     except requests.exceptions.Timeout:
         error_msg = f"Таймаут при запросе к OpenRouter API (модель: {model_id})"
@@ -321,6 +338,18 @@ def send_request(model_info: Dict, prompt: str) -> Optional[str]:
         logger.error(f"API ключ не найден: {api_key_env}")
         return None
     
+    # Автоматическое определение типа API по URL, если тип не указан или неправильный
+    if "openrouter.ai" in api_url.lower():
+        logger.info(f"Автоопределение: используем OpenRouter API для {api_id}")
+        return send_openrouter_request(api_url, api_key, api_id, prompt)
+    elif "deepseek.com" in api_url.lower():
+        logger.info(f"Автоопределение: используем DeepSeek API для {api_id}")
+        return send_deepseek_request(api_url, api_key, api_id, prompt)
+    elif "groq.com" in api_url.lower():
+        logger.info(f"Автоопределение: используем Groq API для {api_id}")
+        return send_groq_request(api_url, api_key, api_id, prompt)
+    
+    # Определение по явно указанному типу
     if model_type == "openai":
         return send_openai_request(api_url, api_key, api_id, prompt)
     elif model_type == "deepseek":
@@ -330,7 +359,7 @@ def send_request(model_info: Dict, prompt: str) -> Optional[str]:
     elif model_type == "openrouter":
         return send_openrouter_request(api_url, api_key, api_id, prompt)
     else:
-        logger.error(f"Неизвестный тип модели: {model_type}")
+        logger.warning(f"Неизвестный тип модели: {model_type}, пытаемся OpenAI-совместимый формат")
         # Попробуем использовать OpenAI-совместимый формат
         return send_openai_request(api_url, api_key, api_id, prompt)
 

@@ -422,3 +422,4 @@ def get_all_settings() -> Dict[str, str]:
     
     return {row["key"]: row["value"] for row in rows}
 
+
