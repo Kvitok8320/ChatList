@@ -23,6 +23,7 @@ from prompt_improver import improve_prompt
 from prompt_improver_dialog import PromptImproverDialog
 from settings_dialog import SettingsDialog
 from about_dialog import AboutDialog
+from version import __version__
 
 
 class WorkerThread(QThread):
@@ -97,7 +98,7 @@ class SavePromptDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("ChatList - Сравнение ответов нейросетей")
+        self.setWindowTitle(f"ChatList v{__version__} - Сравнение ответов нейросетей")
         self.setGeometry(100, 100, 1200, 800)
         
         # Устанавливаем иконку окна

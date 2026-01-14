@@ -6,6 +6,7 @@ import requests
 import logging
 from typing import Dict, Optional
 from dotenv import load_dotenv
+from version import __version__
 
 # Загружаем переменные окружения из .env файла
 load_dotenv()
@@ -13,7 +14,7 @@ load_dotenv()
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format=f'%(asctime)s - ChatList v{__version__} - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('chatlist.log'),
         logging.StreamHandler()
