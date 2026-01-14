@@ -88,7 +88,86 @@ def init_db():
         """, (key, value))
     
     conn.commit()
+    
+    # Проверяем, есть ли уже модели в базе
+    cursor.execute("SELECT COUNT(*) FROM models")
+    model_count = cursor.fetchone()[0]
+    
+    # Если база данных пустая (нет моделей), добавляем модели по умолчанию
+    if model_count == 0:
+        init_default_models(cursor)
+        conn.commit()
+    
     conn.close()
+
+
+def init_default_models(cursor):
+    """Добавляет модели по умолчанию при первом запуске"""
+    # Популярные бесплатные модели через OpenRouter
+    default_models = [
+        {
+            "name": "Meta Llama 3.1 8B (Free)",
+            "api_url": "https://openrouter.ai/api/v1/chat/completions",
+            "api_id": "meta-llama/llama-3.1-8b-instruct:free",
+            "api_key_env": "OPENROUTER_API_KEY",
+            "model_type": "openrouter",
+            "is_active": 1
+        },
+        {
+            "name": "Mistral 7B (Free)",
+            "api_url": "https://openrouter.ai/api/v1/chat/completions",
+            "api_id": "mistralai/mistral-7b-instruct:free",
+            "api_key_env": "OPENROUTER_API_KEY",
+            "model_type": "openrouter",
+            "is_active": 1
+        },
+        {
+            "name": "Google Gemma 7B (Free)",
+            "api_url": "https://openrouter.ai/api/v1/chat/completions",
+            "api_id": "google/gemma-7b-it:free",
+            "api_key_env": "OPENROUTER_API_KEY",
+            "model_type": "openrouter",
+            "is_active": 1
+        },
+        {
+            "name": "DeepSeek Chat",
+            "api_url": "https://openrouter.ai/api/v1/chat/completions",
+            "api_id": "deepseek/deepseek-chat",
+            "api_key_env": "OPENROUTER_API_KEY",
+            "model_type": "openrouter",
+            "is_active": 1
+        },
+        {
+            "name": "DeepSeek Coder",
+            "api_url": "https://openrouter.ai/api/v1/chat/completions",
+            "api_id": "deepseek/deepseek-coder",
+            "api_key_env": "OPENROUTER_API_KEY",
+            "model_type": "openrouter",
+            "is_active": 1
+        }
+    ]
+    
+    for model in default_models:
+        try:
+            # Проверяем, не существует ли уже такая модель
+            cursor.execute("SELECT COUNT(*) FROM models WHERE name = ?", (model["name"],))
+            exists = cursor.fetchone()[0] > 0
+            
+            if not exists:
+                cursor.execute("""
+                    INSERT INTO models (name, api_url, api_id, api_key_env, model_type, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    model["name"],
+                    model["api_url"],
+                    model["api_id"],
+                    model["api_key_env"],
+                    model["model_type"],
+                    model["is_active"]
+                ))
+        except Exception:
+            # Игнорируем ошибки при добавлении моделей по умолчанию
+            pass
 
 
 # ========== Функции для работы с таблицей prompts ==========
