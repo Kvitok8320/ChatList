@@ -11,13 +11,31 @@ from app_paths import get_log_path
 
 # Загружаем переменные окружения из .env файла
 # Ищем .env в папке приложения и в пользовательской папке данных
-load_dotenv()  # Сначала в текущей папке (для разработки)
-if getattr(__import__('sys'), 'frozen', False):
-    # Если приложение упаковано, ищем .env рядом с exe
-    app_dir = os.path.dirname(__import__('sys').executable)
+import sys
+
+# Определяем папку приложения
+if getattr(sys, 'frozen', False):
+    # Если приложение упаковано (PyInstaller), ищем .env рядом с exe
+    app_dir = os.path.dirname(sys.executable)
     env_path = os.path.join(app_dir, '.env')
     if os.path.exists(env_path):
         load_dotenv(env_path)
+        logger.info(f"Загружен .env из папки установки: {env_path}")
+    else:
+        logger.warning(f".env файл не найден в папке установки: {env_path}")
+        # Пробуем загрузить из текущей директории (на случай, если запущено из другой папки)
+        load_dotenv()
+else:
+    # Разработка - загружаем из текущей папки
+    load_dotenv()
+
+# Также пробуем загрузить из пользовательской папки данных
+from app_paths import get_app_data_dir
+user_data_dir = get_app_data_dir()
+user_env_path = os.path.join(user_data_dir, '.env')
+if os.path.exists(user_env_path):
+    load_dotenv(user_env_path)
+    logger.info(f"Загружен .env из пользовательской папки: {user_env_path}")
 
 # Настройка логирования
 log_path = get_log_path()
