@@ -50,6 +50,27 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def reload_env():
+    """Перезагружает переменные окружения из .env файлов"""
+    import sys
+    
+    # Определяем папку приложения
+    if getattr(sys, 'frozen', False):
+        app_dir = os.path.dirname(sys.executable)
+        env_path = os.path.join(app_dir, '.env')
+        if os.path.exists(env_path):
+            load_dotenv(env_path, override=True)
+            logger.info(f"Перезагружен .env из папки установки: {env_path}")
+    
+    # Также загружаем из пользовательской папки данных
+    from app_paths import get_app_data_dir
+    user_data_dir = get_app_data_dir()
+    user_env_path = os.path.join(user_data_dir, '.env')
+    if os.path.exists(user_env_path):
+        load_dotenv(user_env_path, override=True)
+        logger.info(f"Перезагружен .env из пользовательской папки: {user_env_path}")
+
+
 def get_api_key(env_var_name: str) -> Optional[str]:
     """Получает API-ключ из переменной окружения"""
     api_key = os.getenv(env_var_name)
