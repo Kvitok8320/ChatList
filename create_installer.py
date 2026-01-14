@@ -21,22 +21,22 @@ iss_template = """; Inno Setup скрипт для ChatList
 #define MyAppPublisher "ChatList"
 #define MyAppURL "https://github.com/chatlist"
 #define MyAppExeName "ChatListApp-{VERSION}.exe"
-#define MyAppId "{{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}}"
+#define MyAppId "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
 
 [Setup]
 ; Примечание: значение AppId используется для идентификации приложения.
 ; Не используйте тот же AppId в других установщиках.
 ; (Чтобы создать новый идентификатор, нажмите Ctrl+G в Inno Setup)
-AppId={{MyAppId}}
-AppName={{MyAppName}}
-AppVersion={{MyAppVersion}}
-;AppVerName={{MyAppName}} {{MyAppVersion}}
-AppPublisher={{MyAppPublisher}}
-AppPublisherURL={{MyAppURL}}
-AppSupportURL={{MyAppURL}}
-AppUpdatesURL={{MyAppURL}}
-DefaultDirName={{autopf}}\\{{MyAppName}}
-DefaultGroupName={{MyAppName}}
+AppId={{#MyAppId}}
+AppName={{#MyAppName}}
+AppVersion={{#MyAppVersion}}
+;AppVerName={{#MyAppName}} {{#MyAppVersion}}
+AppPublisher={{#MyAppPublisher}}
+AppPublisherURL={{#MyAppURL}}
+AppSupportURL={{#MyAppURL}}
+AppUpdatesURL={{#MyAppURL}}
+DefaultDirName={{autopf}}\\{{#MyAppName}}
+DefaultGroupName={{#MyAppName}}
 AllowNoIcons=yes
 LicenseFile=
 InfoBeforeFile=
