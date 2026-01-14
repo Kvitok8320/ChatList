@@ -301,11 +301,12 @@ def send_openrouter_request(api_url: str, api_key: str, model_id: str, prompt: s
         logger.error(error_msg)
         return f"Ошибка: {error_msg}"
     except requests.exceptions.HTTPError as e:
-        status_code = e.response.status_code if e.response else "unknown"
+        status_code = "unknown"
         response_text = ""
         error_msg = ""
         
-        if e.response:
+        if e.response is not None:
+            status_code = e.response.status_code
             try:
                 # Пытаемся получить JSON ошибки
                 error_json = e.response.json()
@@ -313,9 +314,13 @@ def send_openrouter_request(api_url: str, api_key: str, model_id: str, prompt: s
                     error_msg = error_json["error"].get("message", "Неизвестная ошибка")
                 else:
                     error_msg = str(error_json)
-            except:
+            except (ValueError, AttributeError):
                 # Если не JSON (например, HTML страница ошибки), обрабатываем по статус коду
-                response_text = e.response.text[:200]
+                try:
+                    response_text = e.response.text[:200] if hasattr(e.response, 'text') else str(e.response)[:200]
+                except:
+                    response_text = str(e.response)[:200]
+                
                 if status_code == 403:
                     error_msg = "403 Forbidden: Проверьте API ключ OpenRouter и права доступа. Убедитесь, что ключ правильный и начинается с 'sk-or-v1-'"
                 elif status_code == 401:
@@ -327,10 +332,10 @@ def send_openrouter_request(api_url: str, api_key: str, model_id: str, prompt: s
                 else:
                     error_msg = f"HTTP ошибка {status_code}"
         else:
-            error_msg = f"HTTP ошибка {status_code}"
+            error_msg = f"HTTP ошибка: {str(e)}"
         
         full_error = f"{error_msg}" + (f" (ответ: {response_text[:100]})" if response_text else "")
-        logger.error(f"Ошибка при запросе к OpenRouter API: {full_error}")
+        logger.error(f"Ошибка при запросе к OpenRouter API (модель: {model_id}): {full_error}")
         return f"Ошибка: {error_msg}"
     except requests.exceptions.RequestException as e:
         error_msg = f"Ошибка сети при запросе к OpenRouter API: {str(e)}"
