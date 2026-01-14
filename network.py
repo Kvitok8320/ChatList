@@ -7,16 +7,25 @@ import logging
 from typing import Dict, Optional
 from dotenv import load_dotenv
 from version import __version__
+from app_paths import get_log_path
 
 # Загружаем переменные окружения из .env файла
-load_dotenv()
+# Ищем .env в папке приложения и в пользовательской папке данных
+load_dotenv()  # Сначала в текущей папке (для разработки)
+if getattr(__import__('sys'), 'frozen', False):
+    # Если приложение упаковано, ищем .env рядом с exe
+    app_dir = os.path.dirname(__import__('sys').executable)
+    env_path = os.path.join(app_dir, '.env')
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
 
 # Настройка логирования
+log_path = get_log_path()
 logging.basicConfig(
     level=logging.INFO,
     format=f'%(asctime)s - ChatList v{__version__} - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('chatlist.log'),
+        logging.FileHandler(log_path),
         logging.StreamHandler()
     ]
 )

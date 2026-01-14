@@ -5,14 +5,13 @@ import sqlite3
 import os
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
-
-
-DB_NAME = "chatlist.db"
+from app_paths import get_db_path
 
 
 def get_connection():
     """Создает и возвращает соединение с базой данных"""
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
