@@ -6,7 +6,7 @@
 #define MyAppPublisher "ChatList"
 #define MyAppURL "https://github.com/chatlist"
 #define MyAppExeName "ChatListApp-1.0.0.exe"
-#define MyAppId "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
+#define MyAppId "A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
 
 [Setup]
 ; Примечание: значение AppId используется для идентификации приложения.
@@ -55,7 +55,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: quicklaunchicon; IconFilename: "{app}\app.ico"
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\*"
@@ -67,8 +67,8 @@ Type: dirifempty; Name: "{app}"
 ; Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#MyAppExeName}"; Flags: runhidden skipifdoesntexist
 
 [Code]
-; Дополнительный код для кастомных действий при установке/удалении
+// Дополнительный код для кастомных действий при установке/удалении
 procedure InitializeUninstallProgressForm();
 begin
-  ; Можно добавить кастомные действия при удалении
+  // Можно добавить кастомные действия при удалении
 end;
