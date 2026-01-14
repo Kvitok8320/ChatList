@@ -9,6 +9,18 @@ from dotenv import load_dotenv
 from version import __version__
 from app_paths import get_log_path
 
+# Настройка логирования (сначала, чтобы можно было использовать logger)
+log_path = get_log_path()
+logging.basicConfig(
+    level=logging.INFO,
+    format=f'%(asctime)s - ChatList v{__version__} - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_path),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 # Загружаем переменные окружения из .env файла
 # Ищем .env в папке приложения и в пользовательской папке данных
 import sys
@@ -36,18 +48,6 @@ user_env_path = os.path.join(user_data_dir, '.env')
 if os.path.exists(user_env_path):
     load_dotenv(user_env_path)
     logger.info(f"Загружен .env из пользовательской папки: {user_env_path}")
-
-# Настройка логирования
-log_path = get_log_path()
-logging.basicConfig(
-    level=logging.INFO,
-    format=f'%(asctime)s - ChatList v{__version__} - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_path),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 
 def reload_env():
